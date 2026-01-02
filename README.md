@@ -60,7 +60,7 @@ $ haiku -r 5,7,5,7,7 -u "https://ja.wikipedia.org/wiki/フクロウ"
 ## Installation
 
 ```
-$ go get github.com/makotia/go-haiku/cmd/haiku
+$ go get github.com/0x307e/go-haiku/cmd/haiku
 ```
 
 ## License
@@ -73,4 +73,4 @@ Yasuhiro Matsumoto (a.k.a mattn)
 
 ## Forked
 
-makotia
+0x307e
