@@ -135,6 +135,13 @@ func MatchWithOpt(text string, rule []int, opt *Opt) bool {
 	text = reIgnoreText.ReplaceAllString(text, " ")
 	tokens, err := mecab.Parse(text)
 	if err != nil {
+		if opt.Debug {
+			if opt.DebugWriter != nil {
+				fmt.Fprintln(opt.DebugWriter, "mecab.Parse error:", err)
+			} else {
+				fmt.Fprintln(os.Stderr, "mecab.Parse error:", err)
+			}
+		}
 		return false
 	}
 
