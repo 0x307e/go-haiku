@@ -139,7 +139,7 @@ func MatchWithOpt(text string, rule []int, opt *Opt) bool {
 	}
 
 	// filter ignored tokens
-	var filtered []mecab.Token
+	var filtered []mecab.Node
 	for _, tok := range tokens {
 		c := strings.Split(tok.Feature, ",")
 		if len(c) > 0 && !isIgnore(c) {
@@ -204,7 +204,7 @@ func FindWithOpt(text string, rule []int, opt *Opt) ([]string, error) {
 	}
 
 	// filter ignored tokens
-	var filtered []mecab.Token
+	var filtered []mecab.Node
 	for _, tok := range tokens {
 		c := strings.Split(tok.Feature, ",")
 		if len(c) > 0 && !isIgnore(c) {
