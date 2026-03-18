@@ -75,6 +75,8 @@ func rules(s string) ([]int, error) {
 func main() {
 	u := flag.String("u", "", "handle as URL")
 	d := flag.String("d", "", "user dic")
+	m := flag.Bool("m", false, "check matched")
+	v := flag.Bool("V", false, "verbose")
 	rs := flag.String("r", "5,7,5", "rule of match (default: 5,7,5)")
 	flag.Parse()
 
@@ -104,14 +106,22 @@ func main() {
 		}
 		args = []string{s}
 	}
+
+	opt := &haiku.Opt{DicDir: *d, Debug: *v}
 	for _, arg := range args {
-		res, err := haiku.FindWithOpt(arg, r, &haiku.Opt{Udic: *d})
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		for _, h := range res {
-			fmt.Println(h)
+		if *m {
+			if haiku.MatchWithOpt(arg, r, opt) {
+				fmt.Println("HAIKU!")
+			}
+		} else {
+			res, err := haiku.FindWithOpt(arg, r, opt)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			for _, h := range res {
+				fmt.Println(h)
+			}
 		}
 	}
 }
