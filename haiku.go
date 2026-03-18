@@ -41,7 +41,8 @@ func contains(c []string, s string) bool {
 
 func isEnd(c []string) bool {
 	if c[0] == "接頭辞" || c[0] == "接頭詞" {
-		if contains(c, "御") {
+		// 敬称接頭辞（ご/お/御）はセグメント末尾にならない
+		if contains(c, "御") || contains(c, "ご") || contains(c, "お") {
 			return false
 		}
 		return true

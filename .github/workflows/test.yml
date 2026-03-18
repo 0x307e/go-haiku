@@ -19,6 +19,9 @@ jobs:
           - '1.21'
           - '1.20'
           - '1.18'
+        dict:
+          - ipadic
+          - neologd
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -28,16 +31,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mecab libmecab-dev mecab-ipadic-utf8
+      - name: install neologd
+        if: matrix.dict == 'neologd'
+        run: |
+          sudo apt-get install -y git make curl xz-utils file
+          git clone --depth 1 https://github.com/neologd/mecab-ipadic-neologd.git
+          cd mecab-ipadic-neologd
+          sudo ./bin/install-mecab-ipadic-neologd -n -y
+          echo "dicdir = $(mecab-config --dicdir)/mecab-ipadic-neologd" | sudo tee /etc/mecabrc
       - name: test
         shell: bash
+        env:
+          MECAB_DICT: ${{ matrix.dict }}
         run: |
           export CGO_CFLAGS="$(mecab-config --cflags) -I/usr/include"
           export CGO_LDFLAGS="$(mecab-config --libs)"
           go test -v -count=1 ./...
-      - name: upload coverage report
-        uses: codecov/codecov-action@v4
-        with:
-          env_vars: OS,GO
-        env:
-          OS: ${{ matrix.os }}
-          GO: ${{ matrix.go }}
