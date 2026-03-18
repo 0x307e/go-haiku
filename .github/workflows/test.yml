@@ -24,19 +24,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
-      - name: install mecab and neologd
+      - name: install mecab
         run: |
           sudo apt-get update
-          sudo apt-get install -y mecab libmecab-dev mecab-ipadic-utf8 git make curl xz-utils file
-          git clone --depth 1 https://github.com/neologd/mecab-ipadic-neologd.git
-          cd mecab-ipadic-neologd
-          sudo ./bin/install-mecab-ipadic-neologd -n -y
-          echo "dicdir = $(mecab-config --dicdir)/mecab-ipadic-neologd" | sudo tee /etc/mecabrc
-      - name: verify mecab
-        run: |
-          mecab-config --dicdir
-          cat /etc/mecabrc
-          echo "古池や蛙飛び込む水の音" | mecab
+          sudo apt-get install -y mecab libmecab-dev mecab-ipadic-utf8
       - name: test
         shell: bash
         run: |
