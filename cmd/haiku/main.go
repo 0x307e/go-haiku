@@ -17,7 +17,7 @@ import (
 	"github.com/ikawaha/kagome-dict/dict"
 	"github.com/ikawaha/kagome-dict/uni"
 	"github.com/mattn/go-encoding"
-	"github.com/mattn/go-haiku"
+	"github.com/0x307e/go-haiku"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 )

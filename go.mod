@@ -1,4 +1,4 @@
-module github.com/mattn/go-haiku
+module github.com/0x307e/go-haiku
 
 go 1.18
 
