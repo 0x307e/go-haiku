@@ -258,14 +258,11 @@ func FindWithOpt(text string, rule []int, opt *Opt) ([]string, error) {
 					break
 				}
 			}
-			tokens[i].Surface = surface
-			for k := 0; k < (j - i); k++ {
-				if i+1+k < len(tokens) && j+k < len(tokens) {
-					tokens[i+1+k] = tokens[j+k]
-				}
+			if j > i+1 {
+				tokens[i].Surface = surface
+				copy(tokens[i+1:], tokens[j:])
+				tokens = tokens[:len(tokens)-(j-i-1)]
 			}
-			tokens = tokens[:len(tokens)-(j-i)+1]
-			i = j
 		}
 	}
 
