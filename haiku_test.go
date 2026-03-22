@@ -225,3 +225,23 @@ func containsSubstring(text, sub string) bool {
 	cleanText = strings.ReplaceAll(cleanText, "　", "")
 	return strings.Contains(cleanText, sub)
 }
+
+func TestFindWithOpt_HalfWidthDakutenLongTextNoPanic(t *testing.T) {
+	opts := &Opt{
+		Dict: uni.Dict(),
+	}
+	// 半角カタカナの濁点・半濁点を多数含む長文でpanicしないことを確認
+	// width.Widen + NFC でルーン数が変わるケース
+	texts := []string{
+		"ﾃﾞｨｽﾞﾆｰﾗﾝﾄﾞに行ったらﾊﾟﾚｰﾄﾞを見てﾎﾟｯﾌﾟｺｰﾝを食べてﾊﾞｽで帰ったけどﾎﾟｹｯﾄからﾁｹｯﾄが出てきたよ",
+		"ﾎﾟｹﾓﾝﾊﾞﾄﾙでﾋﾞｰﾀﾞﾏﾝがﾃﾞﾝﾘｭｳにﾊﾞﾁﾊﾞﾁやられたけどﾋﾟｶﾁｭｳのﾃﾞﾝｷｼｮｯｸで勝ったよ",
+		"ﾎﾞｸのﾊﾟｿｺﾝがﾌﾞﾙｰｽｸﾘｰﾝになってﾃﾞｰﾀがﾊﾞｸﾊﾂしたけどﾊﾞｯｸｱｯﾌﾟがあってﾎﾞｸは助かった",
+	}
+	for _, text := range texts {
+		// パニックしないことが主目的
+		_, err := FindWithOpt(text, []int{5, 7, 5}, opts)
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", text, err)
+		}
+	}
+}
