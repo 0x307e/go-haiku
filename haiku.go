@@ -6,16 +6,20 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/ikawaha/kagome-dict/dict"
 	"github.com/ikawaha/kagome/v2/tokenizer"
+	"golang.org/x/text/unicode/norm"
+	"golang.org/x/text/width"
 )
 
 var (
 	reWord       = regexp.MustCompile(`^[ァ-ヾ]+$`)
-	reIgnoreText = regexp.MustCompile(`[\[\]「」『』、。？！]`)
+	reIgnoreText = regexp.MustCompile(`[\[\]［］「」『』、。？！]`)
 	reIgnoreChar = regexp.MustCompile(`[ァィゥェォャュョ]`)
-	reKana       = regexp.MustCompile(`^[ァ-タダ-ヶ]+$`)
+	reKana       = regexp.MustCompile(`^[ァ-ヶー]+$`)
 
 	globalDict *dict.Dict
 )
@@ -123,6 +127,74 @@ func countChars(s string) int {
 	return len([]rune(reIgnoreChar.ReplaceAllString(s, "")))
 }
 
+// normalizeText normalizes half-width katakana to full-width and applies NFC.
+// Returns the normalized text and a rune-index mapping where nfcToOrig[i]
+// is the rune index in original text corresponding to rune i in normalized text.
+func normalizeText(orig string) (string, []int) {
+	widened := width.Widen.String(orig)
+	normalized := norm.NFC.String(widened)
+
+	wideRunes := []rune(widened)
+	nfcRunes := []rune(normalized)
+
+	nfcToOrig := make([]int, len(nfcRunes)+1)
+	wi := 0
+	for ni := 0; ni < len(nfcRunes); ni++ {
+		nfcToOrig[ni] = wi
+		if wi < len(wideRunes) && wideRunes[wi] == nfcRunes[ni] {
+			wi++
+		} else {
+			wi++ // base character
+			for wi < len(wideRunes) && unicode.Is(unicode.Mn, wideRunes[wi]) {
+				wi++
+			}
+		}
+	}
+	nfcToOrig[len(nfcRunes)] = wi
+
+	return normalized, nfcToOrig
+}
+
+// splitUnknownKatakana splits an unknown katakana token into known sub-tokens
+// using longest-match-first strategy. This handles cases where Kagome merges
+// known and unknown katakana into a single unknown token (e.g. "テストミミッキュ").
+func splitUnknownKatakana(t *tokenizer.Tokenizer, surface string) []tokenizer.Token {
+	runes := []rune(surface)
+	if len(runes) <= 1 {
+		return nil
+	}
+	var result []tokenizer.Token
+	pos := 0
+	for pos < len(runes) {
+		bestLen := 1
+		var bestToken *tokenizer.Token
+		for end := len(runes); end > pos+1; end-- {
+			prefix := string(runes[pos:end])
+			tokens := t.Tokenize(prefix)
+			if len(tokens) > 0 && len(tokens[0].Features()) >= 7 {
+				tl := utf8.RuneCountInString(tokens[0].Surface)
+				tok := tokens[0]
+				bestToken = &tok
+				bestLen = tl
+				break
+			}
+		}
+		if bestToken != nil {
+			result = append(result, *bestToken)
+		} else {
+			tokens := t.Tokenize(string(runes[pos : pos+1]))
+			if len(tokens) > 0 {
+				result = append(result, tokens[0])
+			}
+		}
+		pos += bestLen
+	}
+	if len(result) <= 1 {
+		return nil
+	}
+	return result
+}
+
 // Match return true when text matches with rule(s).
 func Match(text string, rule []int) bool {
 	return MatchWithOpt(text, rule, &Opt{})
@@ -148,6 +220,7 @@ func MatchWithOpt(text string, rule []int, opt *Opt) bool {
 	if err != nil {
 		return false
 	}
+	text = norm.NFC.String(width.Widen.String(text))
 	text = reIgnoreText.ReplaceAllString(text, " ")
 	tokens := t.Tokenize(text)
 	pos := 0
@@ -162,6 +235,19 @@ func MatchWithOpt(text string, rule []int, opt *Opt) bool {
 		}
 	}
 	tokens = tmp
+
+	// Split unknown katakana tokens into known sub-tokens
+	for i := 0; i < len(tokens); i++ {
+		if reKana.MatchString(tokens[i].Surface) && len(tokens[i].Features()) < 7 {
+			if sub := splitUnknownKatakana(t, tokens[i].Surface); len(sub) > 0 {
+				expanded := make([]tokenizer.Token, 0, len(tokens)+len(sub)-1)
+				expanded = append(expanded, tokens[:i]...)
+				expanded = append(expanded, sub...)
+				expanded = append(expanded, tokens[i+1:]...)
+				tokens = expanded
+			}
+		}
+	}
 
 	for i := 0; i < len(tokens); i++ {
 		tok := tokens[i]
@@ -229,8 +315,22 @@ func FindWithOpt(text string, rule []int, opt *Opt) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	text = reIgnoreText.ReplaceAllString(text, " ")
-	tokens := t.Tokenize(text)
+	origRunes := []rune(text)
+	normText, nfcToOrig := normalizeText(text)
+	normText = reIgnoreText.ReplaceAllString(normText, " ")
+	tokens := t.Tokenize(normText)
+
+	// Build original surfaces using rune mapping
+	origSurfaces := make([]string, len(tokens))
+	runePos := 0
+	for i, tok := range tokens {
+		tokRuneLen := utf8.RuneCountInString(tok.Surface)
+		origStart := nfcToOrig[runePos]
+		origEnd := nfcToOrig[runePos+tokRuneLen]
+		origSurfaces[i] = string(origRunes[origStart:origEnd])
+		runePos += tokRuneLen
+	}
+
 	pos := 0
 	r := make([]int, len(rule))
 	copy(r, rule)
@@ -238,30 +338,71 @@ func FindWithOpt(text string, rule []int, opt *Opt) ([]string, error) {
 	start := 0
 	ambigous := 0
 
-	var tmp []tokenizer.Token
-	for _, token := range tokens {
+	// Filter ignored tokens (keep origSurfaces in sync)
+	var filteredTokens []tokenizer.Token
+	var filteredOrig []string
+	for i, token := range tokens {
 		c := token.Features()
 		if !isIgnore(d, c) {
-			tmp = append(tmp, token)
+			filteredTokens = append(filteredTokens, token)
+			filteredOrig = append(filteredOrig, origSurfaces[i])
 		}
 	}
-	tokens = tmp
+	tokens = filteredTokens
+	origSurfaces = filteredOrig
 
+	// Merge consecutive unknown katakana, then split into known sub-tokens
 	for i := 0; i < len(tokens); i++ {
-		if reKana.MatchString(tokens[i].Surface) {
+		if reKana.MatchString(tokens[i].Surface) && len(tokens[i].Features()) < 7 {
+			// Merge consecutive unknown katakana
 			surface := tokens[i].Surface
+			origSurf := origSurfaces[i]
 			var j int
 			for j = i + 1; j < len(tokens); j++ {
-				if reKana.MatchString(tokens[j].Surface) {
+				if reKana.MatchString(tokens[j].Surface) && len(tokens[j].Features()) < 7 {
 					surface += tokens[j].Surface
+					origSurf += origSurfaces[j]
 				} else {
 					break
 				}
 			}
 			if j > i+1 {
 				tokens[i].Surface = surface
+				origSurfaces[i] = origSurf
 				copy(tokens[i+1:], tokens[j:])
 				tokens = tokens[:len(tokens)-(j-i-1)]
+				copy(origSurfaces[i+1:], origSurfaces[j:])
+				origSurfaces = origSurfaces[:len(origSurfaces)-(j-i-1)]
+			}
+
+			// Split merged unknown katakana into known sub-tokens
+			if sub := splitUnknownKatakana(t, tokens[i].Surface); len(sub) > 0 {
+				// Build sub-origSurfaces using local rune mapping
+				parentOrigSurf := origSurfaces[i]
+				_, localMap := normalizeText(parentOrigSurf)
+				parentOrigRunes := []rune(parentOrigSurf)
+				subOrig := make([]string, len(sub))
+				localRunePos := 0
+				for si, st := range sub {
+					stRuneLen := utf8.RuneCountInString(st.Surface)
+					origStart := localMap[localRunePos]
+					origEnd := localMap[localRunePos+stRuneLen]
+					subOrig[si] = string(parentOrigRunes[origStart:origEnd])
+					localRunePos += stRuneLen
+				}
+
+				// Splice into tokens and origSurfaces
+				newTokens := make([]tokenizer.Token, 0, len(tokens)+len(sub)-1)
+				newTokens = append(newTokens, tokens[:i]...)
+				newTokens = append(newTokens, sub...)
+				newTokens = append(newTokens, tokens[i+1:]...)
+				tokens = newTokens
+
+				newOrig := make([]string, 0, len(origSurfaces)+len(subOrig)-1)
+				newOrig = append(newOrig, origSurfaces[:i]...)
+				newOrig = append(newOrig, subOrig...)
+				newOrig = append(newOrig, origSurfaces[i+1:]...)
+				origSurfaces = newOrig
 			}
 		}
 	}
@@ -270,7 +411,7 @@ func FindWithOpt(text string, rule []int, opt *Opt) ([]string, error) {
 	for i := 0; i < len(tokens); i++ {
 		tok := tokens[i]
 		c := tok.Features()
-		if len(c) < 7 {
+		if len(c) < 7 && !reKana.MatchString(tok.Surface) {
 			continue
 		}
 		var y string
@@ -304,7 +445,7 @@ func FindWithOpt(text string, rule []int, opt *Opt) ([]string, error) {
 		ambigous += strings.Count(y, "ッ") + strings.Count(y, "ー")
 		n := countChars(y)
 		r[pos] -= n
-		sentence += tok.Surface
+		sentence += origSurfaces[i]
 		if r[pos] >= 0 && (r[pos] == 0 || r[pos]+ambigous == 0) {
 			pos++
 			if pos == len(r) || pos == len(r)+1 {
