@@ -143,12 +143,15 @@ func normalizeText(orig string) (string, []int) {
 		nfcToOrig[ni] = wi
 		if wi < len(wideRunes) && wideRunes[wi] == nfcRunes[ni] {
 			wi++
-		} else {
+		} else if wi < len(wideRunes) {
 			wi++ // base character
 			for wi < len(wideRunes) && unicode.Is(unicode.Mn, wideRunes[wi]) {
 				wi++
 			}
 		}
+	}
+	if wi > len(wideRunes) {
+		wi = len(wideRunes)
 	}
 	nfcToOrig[len(nfcRunes)] = wi
 
