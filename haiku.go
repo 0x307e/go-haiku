@@ -20,6 +20,7 @@ var (
 	reIgnoreText = regexp.MustCompile(`[\[\]［］「」『』、。？！]`)
 	reIgnoreChar = regexp.MustCompile(`[ァィゥェォャュョ]`)
 	reKana       = regexp.MustCompile(`^[ァ-ヶー]+$`)
+	reDigit      = regexp.MustCompile(`^[０-９]+$`)
 
 	globalDict *dict.Dict
 )
@@ -255,6 +256,9 @@ func MatchWithOpt(text string, rule []int, opt *Opt) bool {
 	for i := 0; i < len(tokens); i++ {
 		tok := tokens[i]
 		c := tok.Features()
+		if reDigit.MatchString(tok.Surface) {
+			return false
+		}
 		var y string
 		if reKana.MatchString(tok.Surface) {
 			y = tok.Surface
@@ -414,7 +418,13 @@ func FindWithOpt(text string, rule []int, opt *Opt) ([]string, error) {
 	for i := 0; i < len(tokens); i++ {
 		tok := tokens[i]
 		c := tok.Features()
-		if len(c) < 7 && !reKana.MatchString(tok.Surface) {
+		if (len(c) < 7 && !reKana.MatchString(tok.Surface)) || reDigit.MatchString(tok.Surface) {
+			if pos > 0 || r[0] != rule[0] {
+				pos = 0
+				ambigous = 0
+				sentence = ""
+				copy(r, rule)
+			}
 			continue
 		}
 		var y string
