@@ -245,3 +245,53 @@ func TestFindWithOpt_HalfWidthDakutenLongTextNoPanic(t *testing.T) {
 		}
 	}
 }
+
+// 辞書に存在しない英単語をスキップして離れたトークンが結合され
+// 偽の俳句が検出されるバグの回避を確認する
+func TestFindWithOpt_UnknownAlphabeticWordShouldResetState(t *testing.T) {
+	opts := &Opt{
+		Dict: uni.Dict(),
+	}
+	texts := []string{
+		"apple carplay と android autoに対応してる",
+		"python frameworkでwebsite作ってdeployした",
+	}
+	for _, text := range texts {
+		result, err := FindWithOpt(text, []int{5, 7, 5}, opts)
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", text, err)
+		}
+		if len(result) > 0 {
+			t.Errorf("expected no haiku for %q, got %v", text, result)
+		}
+	}
+}
+
+// アラビア数字が個別トークン化され各桁の発音で偽のモーラ数になるバグの回避を確認する
+func TestFindWithOpt_ArabicDigitsShouldResetState(t *testing.T) {
+	opts := &Opt{
+		Dict: uni.Dict(),
+	}
+	texts := []string{
+		"15000文字はかかりそう",
+		"12345回やり直してみた",
+	}
+	for _, text := range texts {
+		result, err := FindWithOpt(text, []int{5, 7, 5}, opts)
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", text, err)
+		}
+		if len(result) > 0 {
+			t.Errorf("expected no haiku for %q, got %v", text, result)
+		}
+	}
+}
+
+func TestMatchWithOpt_ArabicDigitsShouldNotMatch(t *testing.T) {
+	opts := &Opt{
+		Dict: uni.Dict(),
+	}
+	if MatchWithOpt("15000文字はかかりそう", []int{5, 7, 5}, opts) {
+		t.Error("expected no match for text containing arabic digits")
+	}
+}
