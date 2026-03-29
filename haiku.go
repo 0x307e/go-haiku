@@ -159,44 +159,32 @@ func normalizeText(orig string) (string, []int) {
 	return normalized, nfcToOrig
 }
 
-// splitUnknownKatakana splits an unknown katakana token into known sub-tokens
-// using longest-match-first strategy. This handles cases where Kagome merges
-// known and unknown katakana into a single unknown token (e.g. "テストミミッキュ").
+// splitUnknownKatakana splits an unknown katakana token into known sub-tokens.
+// This handles cases where Kagome merges known and unknown katakana into a
+// single unknown token (e.g. "テストミミッキュ").
+// It tokenizes the surface once and returns the result if the tokenizer
+// produces a more granular split with at least one known token.
 func splitUnknownKatakana(t *tokenizer.Tokenizer, surface string) []tokenizer.Token {
 	runes := []rune(surface)
 	if len(runes) <= 1 {
 		return nil
 	}
-	var result []tokenizer.Token
-	pos := 0
-	for pos < len(runes) {
-		bestLen := 1
-		var bestToken *tokenizer.Token
-		for end := len(runes); end > pos+1; end-- {
-			prefix := string(runes[pos:end])
-			tokens := t.Tokenize(prefix)
-			if len(tokens) > 0 && len(tokens[0].Features()) >= 7 {
-				tl := utf8.RuneCountInString(tokens[0].Surface)
-				tok := tokens[0]
-				bestToken = &tok
-				bestLen = tl
-				break
-			}
-		}
-		if bestToken != nil {
-			result = append(result, *bestToken)
-		} else {
-			tokens := t.Tokenize(string(runes[pos : pos+1]))
-			if len(tokens) > 0 {
-				result = append(result, tokens[0])
-			}
-		}
-		pos += bestLen
-	}
-	if len(result) <= 1 {
+	tokens := t.Tokenize(surface)
+	if len(tokens) <= 1 {
 		return nil
 	}
-	return result
+	// Check that at least one token is a known word (features >= 7).
+	hasKnown := false
+	for _, tok := range tokens {
+		if len(tok.Features()) >= 7 {
+			hasKnown = true
+			break
+		}
+	}
+	if !hasKnown {
+		return nil
+	}
+	return tokens
 }
 
 // Match return true when text matches with rule(s).
