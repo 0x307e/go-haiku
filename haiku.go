@@ -169,7 +169,7 @@ func splitUnknownKatakana(t *tokenizer.Tokenizer, surface string) []tokenizer.To
 	if len(runes) <= 1 {
 		return nil
 	}
-	tokens := t.Tokenize(surface)
+	tokens := t.Analyze(surface, tokenizer.Search)
 	if len(tokens) <= 1 {
 		return nil
 	}

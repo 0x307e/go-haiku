@@ -287,6 +287,26 @@ func TestFindWithOpt_ArabicDigitsShouldResetState(t *testing.T) {
 	}
 }
 
+// Kagome が隣接するカタカナ語（既知＋未知）を1トークンに結合した場合に
+// Search モードで正しく分割され俳句が検出されることを確認
+func TestMatchWithOpt_AdjacentKatakanaShouldBeSplit(t *testing.T) {
+	opts := &Opt{
+		Dict: uni.Dict(),
+	}
+	// スペースなしの入力で「カプチーノアサシーノ」が1トークンになるケース
+	text := "カプチーノアサシーノ見るバレリーナ"
+	if !MatchWithOpt(text, []int{5, 7, 5}, opts) {
+		t.Errorf("expected %q to match 5-7-5", text)
+	}
+	result, err := FindWithOpt(text, []int{5, 7, 5}, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) == 0 {
+		t.Errorf("expected haiku to be found in %q, got none", text)
+	}
+}
+
 func TestMatchWithOpt_ArabicDigitsShouldNotMatch(t *testing.T) {
 	opts := &Opt{
 		Dict: uni.Dict(),
